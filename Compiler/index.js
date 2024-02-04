@@ -19,7 +19,7 @@ class Compiler {
   }
 
   compile() {
-    const flow = [this.getEntryFile, this.buildModule];
+    const flow = [this.getEntryFile.bind(this), this.buildModule.bind(this)];
     return flow.reduce((pre, cur) => {
       return cur(pre);
     }, null);
@@ -39,7 +39,24 @@ class Compiler {
    * @param {*} modulePath 
    */
   buildModule(modulePath) {
-    const origin = fs.writeFileSync(modulePath, "utf-8");
+    let originSourceCode = fs.readFileSync(modulePath, "utf-8");
+
+    const rules = this.options.module.rules;
+
+    let loaders = [];
+
+    for (let i = 0; i < rules.length; i++) {
+      if (rules[i].test.test(modulePath)) {
+        loaders = [...loaders, ...rules[i].use];
+      }
+    }
+
+    // loader 是从右往左执行
+    loaders.reverse().forEach((loader) => {
+      originSourceCode = require(loader)(originSourceCode);
+    });
+
+    console.log(`originSourceCode--->`, originSourceCode);
   }
 }
 
