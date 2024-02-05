@@ -2,12 +2,15 @@ const path = require("path");
 const RunPlugin = require("./plugins/run.plugin");
 const DonePlugin = require("./plugins/done.plugin");
 module.exports = {
-  mode: "production",
+  mode: "development",
   context: process.cwd(), // current working directory 当前的工作目录
   entry: "./src/index.js",
   output: {
     path: path.resolve(__dirname, "dist"),
     filename: "main.js",
+  },
+  resolve: {
+    extensions: [".js", ".jsx", ".json"],
   },
   module: {
     rules: [
