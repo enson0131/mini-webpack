@@ -1,18 +1,30 @@
-
+/**
+ * 
+ * {
+        name: string,
+        entryModule: module - 入口模块,
+        modules: [{ 
+            id: string - 模块id,
+            dependencies: string - 依赖的模块绝对路径,
+            _source: string - 源代码
+        }]
+ * }
+ * @param {*} chunks
+ * @returns 
+ */
+function getSource(chunk) {
+  return `
     (() => {
         var modules = {
-          
-                "./src/index.js": (module, exports, require) => {
-                    const title = require("./src/title.js");
-console.log(`title`, title);
-// 2// 1
+          ${chunk.modules
+            .map(
+              (module) => `
+                "${module.id}": (module, exports, require) => {
+                    ${module._source}
                 }
-            ,
-                "./src/title.js": (module, exports, require) => {
-                    module.exports = "enson1";
-// 2// 1
-                }
-            
+            `
+            )
+            .join(",")}
         };
         // The module cache
         var cache = {};
@@ -41,9 +53,10 @@ console.log(`title`, title);
         var __webpack_exports__ = {};
         // This entry need to be wrapped in an IIFE because it need to be isolated against other modules in the chunk.
         (() => {
-          const title = require("./src/title.js");
-console.log(`title`, title);
-// 2// 1
+          ${chunk.entryModule._source}
         })();
       })();
-    
+    `;
+}
+
+module.exports = getSource;

@@ -5,6 +5,7 @@ const types = require("babel-types"); // 操作工具
 const parser = require("@babel/parser"); // 将源代码转化成 AST
 const traverse = require("@babel/traverse").default; // 操作 AST
 const generator = require("@babel/generator").default; // 将 AST 转化成源代码
+const getSource = require("../utils/getSource");
 
 class Compiler {
   constructor(options) {
@@ -21,6 +22,8 @@ class Compiler {
     }
     */
     this.modules = []; // 这里存放所有的模块
+    this.chunks = []; // webpack5  -> this.chunks = new Set();
+    this.assets = {}; // 输出列表，存放将要输出的文件
   }
 
   run() {
@@ -34,24 +37,28 @@ class Compiler {
     const flow = [
       this.getEntryFile.bind(this),
       this.buildModule.bind(this),
-      this.buildModuleChildren.bind(this),
+      this.buildChunk.bind(this),
+      this.buildFile.bind(this),
     ];
     return flow.reduce((pre, cur) => {
       return cur(pre);
     }, null);
   }
 
-  // 5. 根据配置文件中的 entry 确定入口文件
+  // 5. 确定入口: 根据配置文件中的 entry 确定入口文件
   getEntryFile() {
     const entry = path.join(this.options.context, this.options.entry);
     return entry;
   }
 
   /**
-   * 6. 从入口文件出发，调用所有配置的 Loader 对模块进行编译，
+   * 6. 编译模块：从入口文件出发，调用所有配置的 Loader 对模块进行编译，
      再找出该模块依赖的模块，得到了每个模块被编译后的 最终内容 以及他们之间的 依赖关系图；
      编译模块:
         - 1. 读取模块文件
+        - 2. 调用配置的 loader 对模块进行编译
+        - 3. 通过 AST 递归子模块，获取子模块，并对子模块进行编译
+        - 4. 通过 modules 存储每个模块，得到模块的最终内容和他们之间的 依赖关系图
    * @param {*} modulePath 
    * @return 返回编译修改后的 module
    */
@@ -83,7 +90,6 @@ class Compiler {
 
     // 通过 AST 获取子模块
     const ast = parser.parse(originSourceCode, { sourceType: "module" });
-    console.log(`AST---->`, ast);
 
     // 编译语法树
     traverse(ast, {
@@ -118,7 +124,6 @@ class Compiler {
           // "./src/index.js" - 这个是一个模块 ID
           // 例如 depModulePath = /a/b/c, baseDir = /a/b relative => c
           const depModuleId = this.getModuleId(depModulePath);
-
           node.arguments = [types.stringLiteral(depModuleId)]; // 修改 AST 的参数，具体可查看 public/2.png
           module.dependencies.push(depModulePath);
         }
@@ -128,20 +133,50 @@ class Compiler {
     let { code } = generator(ast);
 
     module._source = code; // 转化后的代码
-
-    console.log(`code-->`, code);
+    this.modules.push(module); // 添加模块
+    // 7. 再找出该模块依赖的模块，再递归编译处理
+    module?.dependencies?.forEach((dependency) => {
+      this.buildModule(dependency);
+    });
 
     return module;
   }
 
-  // 7. 再找出该模块依赖的模块，再递归编译处理
-  buildModuleChildren(entryModule) {
-    if (!entryModule.dependencies || !entryModule.dependencies.length) return;
-    entryModule.dependencies.forEach((dependency) => {
-      const dependencyModule = this.buildModule(dependency);
-      this.modules.push(dependencyModule);
-      this.buildModuleChildren(dependencyModule);
+  /**
+   * 7. 组合 Chunk: 根据入口文件与各个模块的关联关系，组转成一个包含多模块的 Chunk，等待输出
+   */
+  buildChunk(entryModule) {
+    let chunk = {
+      name: "main",
+      entryModule, // 入口模块
+      modules: this.modules,
+    };
+
+    this.chunks.push(chunk);
+
+    // 把每个 Chunk 转化成一个单独的文件加入到输出列表
+    this.chunks.forEach((chunk) => {
+      // key 是文件名
+      // value 是打包后的内容
+      this.assets[chunk.name + ".js"] = getSource(chunk);
     });
+  }
+
+  /**
+   * 根据配置确定好输出的内容后，根据配置确定输出的路径和文件名，把文件内容写在写入到文件系统上
+   */
+  buildFile() {
+    const files = Object.keys(this.assets);
+    const dirPath = this.options.output.path;
+    const targetPath = path.join(dirPath, this.options.output.filename);
+
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath);
+    }
+
+    for (let name of files) {
+      fs.writeFileSync(targetPath, this.assets[name]);
+    }
   }
 
   getModuleId(modulePath) {

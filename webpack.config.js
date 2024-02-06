@@ -4,6 +4,7 @@ const DonePlugin = require("./plugins/done.plugin");
 module.exports = {
   mode: "development",
   context: process.cwd(), // current working directory 当前的工作目录
+  devtool: false,
   entry: "./src/index.js",
   output: {
     path: path.resolve(__dirname, "dist"),
