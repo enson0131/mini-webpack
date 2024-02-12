@@ -21,16 +21,31 @@ class Compiler {
       _source: String; // 源代码
     }
     */
+    this.entry = null;
     this.modules = []; // 这里存放所有的模块
     this.chunks = []; // webpack5  -> this.chunks = new Set();
     this.assets = {}; // 输出列表，存放将要输出的文件
+    this.callback = null;
   }
 
-  run() {
+  run(callback) {
+    this.callback = callback;
     this.hooks.run.call(); // 当调用 run 方法的时候，会触发 run 这个钩子，进而执行它的回调函数
     // 中间就是编译过程
     this.compile();
     this.hooks.done.call();
+    callback &&
+      callback(null, {
+        // 此对象 stats 统计信息，表示本次编译结果的描述信息对象
+        toJson() {
+          return {
+            assets: this.assets,
+            chunks: this.chunks,
+            modules: this.modules,
+            entry: this.entry,
+          };
+        },
+      });
   }
 
   compile() {
@@ -47,8 +62,8 @@ class Compiler {
 
   // 5. 确定入口: 根据配置文件中的 entry 确定入口文件
   getEntryFile() {
-    const entry = path.join(this.options.context, this.options.entry);
-    return entry;
+    this.entry = path.join(this.options.context, this.options.entry);
+    return this.entry;
   }
 
   /**
